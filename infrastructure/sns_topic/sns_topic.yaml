@@ -1,0 +1,68 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'SNS Topic to send alerts to application  team'
+Parameters:
+  AlarmsEmail:
+    Type: String
+    Description: Alarms Email
+    Default: ""
+  Stage:
+    Description: Stage of the application
+    Type: String
+  ServiceName:
+    Description: The name of the application to roll out
+    Type: String
+
+Resources:
+  Topic:
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W47
+            reason: "This is not needed, using AWS default Encryption"
+    Type: 'AWS::SNS::Topic'
+    Properties:
+      DisplayName: !Sub '${ServiceName}-${Stage}-AlertTopic'
+      TopicName: !Sub '${ServiceName}-${Stage}-AlertTopic'
+
+  SNSSubscription:
+    Type: AWS::SNS::Subscription
+    Properties:
+      TopicArn: !Ref Topic
+      Endpoint: !Ref AlarmsEmail
+      Protocol: "email"
+      Region: !Ref AWS::Region
+
+  TopicPolicy:
+    Type: 'AWS::SNS::TopicPolicy'
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: F18
+            reason: "This is okay, since the action is non-critical and we do have micro segmented account setups. Therefore each iam role is allowed to publish SNS warnings."
+    Properties:
+      PolicyDocument:
+        Id: Id1
+        Version: '2012-10-17'
+        Statement:
+        - Sid: Sid1
+          Effect: Allow
+          Principal:
+            Service: 'events.amazonaws.com' # Allow CloudWatch Events
+          Action: 'sns:Publish'
+          Resource: !Ref Topic
+        - Sid: Sid2
+          Effect: Allow
+          Principal:
+            AWS: '*' # Allow CloudWatch Alarms
+          Action: 'sns:Publish'
+          Resource: !Ref Topic
+          Condition:
+            StringEquals:
+              'AWS:SourceOwner': !Ref 'AWS::AccountId'
+      Topics:
+      - !Ref Topic
+
+Outputs:
+  Topic:
+    Description: 'SNSTopic'
+    Value: !Ref Topic

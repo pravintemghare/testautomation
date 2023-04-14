@@ -1,0 +1,49 @@
+
+AWSTemplateFormatVersion: 2010-09-09
+Description: Application Load Balancer log bucket
+
+Parameters: 
+  ServiceName:
+    Type: "String"
+  Stage:
+    Type: "String"
+  ConnectedVpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: "ID of the VPC containing the service resources."
+
+Resources:
+  AlbSecurityGroup:
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W40
+            reason: "This is not needed, it is already handled by network segmentation"
+          - id: W5
+            reason: "This is not needed, it is already handled by network segmentation"
+          - id: W9
+            reason: "This is the purpose"
+          - id: W2
+            reason: "This is the purpose"
+    Type: "AWS::EC2::SecurityGroup"
+    Properties:
+      GroupDescription: !Sub "${ServiceName}-${Stage}-alb-sec-group"
+      VpcId: !Ref ConnectedVpcId
+      SecurityGroupIngress:
+      - Description: "HTTP Ingress from public Internet for https forwarding"
+        FromPort: 80
+        ToPort: 80
+        IpProtocol: "tcp"
+        CidrIp: "0.0.0.0/0"
+      - Description: "HTTPS Ingress from public Internet"
+        FromPort: 443
+        ToPort: 443
+        IpProtocol: "tcp"
+        CidrIp: "0.0.0.0/0"
+      SecurityGroupEgress:
+      - CidrIp: "0.0.0.0/0"
+        Description: "Egress to public for AWS APIs"
+        IpProtocol: "-1"
+
+Outputs:
+  SecurityGroupId:
+    Value: !GetAtt AlbSecurityGroup.GroupId

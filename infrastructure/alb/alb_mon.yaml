@@ -1,0 +1,210 @@
+AWSTemplateFormatVersion: 2010-09-09
+
+Parameters:
+  ServiceName:
+    Type: String
+    Description: An identifier that is used to create identifiable resources.
+  Stage:
+    Type: String
+  LoadBalancerArn:
+    Type: String
+  TargetGroupArn1:
+    Type: String
+  TargetGroupLabel1:
+    Type: String
+
+  MinimalHealthyHostCount:
+    Type: Number
+    Description: Minimal count of Healthy Hosts that the Loadbalancer needs to have
+    Default: 1
+    MinValue: 1
+    MaxValue: 10
+  UnhealthyHostNotificationEmail:
+    Type: String
+    Default: ""
+    Description: >
+      OPTIONAL: A single e-mail address to receive notifications
+      triggered by the CloudWatch alarms.
+
+Conditions:
+  AddEmailSubscription: !Not
+    - !Equals 
+        - !Ref UnhealthyHostNotificationEmail
+        - ""
+
+Resources:
+  ##########################################################################
+  #                                 TOPIC                                  #
+  ##########################################################################
+  AlarmTopic:
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W47
+            reason: "This is not needed, using AWS default Encryption "
+    Type: 'AWS::SNS::Topic'
+    Properties:
+      DisplayName: !Sub "Loadbalancer Alerts ${ServiceName}-${Stage}"
+      TopicName: !Sub "Loadbalancer-Alerts_${ServiceName}-${Stage}"
+  
+  TopicPolicy:
+    Type: 'AWS::SNS::TopicPolicy'
+    Properties:
+      PolicyDocument:
+        Id: Id1
+        Version: '2012-10-17'
+        Statement:
+          - Sid: AllowAlarmPub
+            Effect: Allow
+            Principal:
+              Service:
+                - cloudwatch.amazonaws.com
+            Action: 'sns:Publish'
+            Resource: !Ref AlarmTopic
+            Condition:
+              ArnLike:
+                'aws:SourceArn':
+                  - !GetAtt MinimalHealthyHostsAlarm1.Arn
+      Topics:
+        - !Ref AlarmTopic
+
+  TopicEmailSubscription:
+    Type: AWS::SNS::Subscription
+    Condition: AddEmailSubscription
+    Properties:
+      TopicArn: !Ref AlarmTopic
+      Protocol: email
+      Endpoint: !Ref UnhealthyHostNotificationEmail
+
+  ##########################################################################
+  #                                 ALARMS                                 #
+  ##########################################################################
+  MinimalHealthyHostsAlarm1:
+    Type: 'AWS::CloudWatch::Alarm'
+    Properties:
+      AlarmActions:
+        - !Ref AlarmTopic
+      AlarmDescription: !Sub "Number of healthy hosts that the load balancer can route to is below the threshold of ${MinimalHealthyHostCount} (application: ${TargetGroupLabel1}, environment: ${Stage})"
+      ComparisonOperator: LessThanThreshold
+      Dimensions:
+        - Name: LoadBalancer
+          Value: !Join [ '/', [!Select [1, !Split ['/', !Ref LoadBalancerArn]], !Select [2, !Split ['/', !Ref LoadBalancerArn]], !Select [3, !Split ['/', !Ref LoadBalancerArn]]]]
+        - Name: TargetGroup
+          Value: !Select [5, !Split [':', !Ref TargetGroupArn1]]
+      EvaluationPeriods: 1
+      MetricName: HealthyHostCount
+      Namespace: AWS/ApplicationELB
+      OKActions:
+        - !Ref AlarmTopic
+      Period: 60
+      Statistic: Average
+      Threshold: !Ref MinimalHealthyHostCount
+      TreatMissingData: notBreaching
+
+  ##########################################################################
+  #                                 DASHBOARD                              #
+  ##########################################################################
+  dashboard:
+    Type: AWS::CloudWatch::Dashboard
+    Properties:
+      DashboardName: !Sub "${ServiceName}-Dashboard-${Stage}"
+      DashboardBody:
+        !Sub 
+            - |
+              {
+                "start": "-PT6H",
+                "widgets": [
+                    {
+                        "height": 2,
+                        "width": 18,
+                        "y": 0,
+                        "x": 0,
+                        "type": "alarm",
+                        "properties": {
+                            "title": "Load Balancer Alarms",
+                            "alarms": [
+                                "${MinimalHealthyHostsAlarm1.Arn}"
+                            ]
+                        }
+                    },
+                    {
+                        "height": 6,
+                        "width": 6,
+                        "y": 2,
+                        "x": 0,
+                        "type": "text",
+                        "properties": {
+                            "markdown": "\n## Hints\n \nUse LoadBalancer Console for additional Monitoring Information   \n[button:primary:Go to LoadBalancer Console](https://${AWS::Region}.console.aws.amazon.com/ec2/v2/home?region=${AWS::Region}#LoadBalancers:sort=loadBalancerName) \n\nUse TargetGroup Console for additional Monitoring Information   \n[button:primary:Go to TargetGroup Console](https://${AWS::Region}.console.aws.amazon.com/ec2/v2/home?region=${AWS::Region}#TargetGroups:) "
+                        }
+                    },
+                    {
+                        "type": "metric",
+                        "x": 12,
+                        "y": 2,
+                        "width": 6,
+                        "height": 6,
+                        "properties": {
+                            "metrics": [
+                                [ { "expression": "SEARCH('{AWS/ApplicationELB,LoadBalancer}', 'Average', 300)", "id": "e1", "period": 300, "visible": false } ],
+                                [ "AWS/ApplicationELB", "ActiveConnectionCount", "LoadBalancer", "${Loadbalancer}", { "id": "m1", "period": 60, "stat": "Maximum" } ]
+                            ],
+                            "view": "timeSeries",
+                            "stacked": false,
+                            "region": "${AWS::Region}",
+                            "stat": "Average",
+                            "period": 300
+                        }
+                    },
+                    {
+                        "type": "metric",
+                        "x": 6,
+                        "y": 8,
+                        "width": 12,
+                        "height": 6,
+                        "properties": {
+                            "title": "Consumed Load Balancer Capacity Units",
+                            "metrics": [
+                                [ "AWS/ApplicationELB", "ConsumedLCUs", "LoadBalancer", "${Loadbalancer}" ],
+                                [ ".", "ConsumedLCUs_TLS", ".", "." ]
+                            ],
+                            "view": "timeSeries",
+                            "stacked": true,
+                            "region": "${AWS::Region}",
+                            "period": 300,
+                            "stat": "Average"
+                        }
+                    },
+                    {
+                        "type": "metric",
+                        "x": 6,
+                        "y": 2,
+                        "width": 6,
+                        "height": 6,
+                        "properties": {
+                            "view": "timeSeries",
+                            "stacked": false,
+                            "metrics": [
+                                [ "AWS/ApplicationELB", "ProcessedBytes", "LoadBalancer", "${Loadbalancer}" ]
+                            ],
+                            "region": "${AWS::Region}"
+                        }
+                    },
+                    {
+                        "type": "metric",
+                        "x": 0,
+                        "y": 8,
+                        "width": 6,
+                        "height": 6,
+                        "properties": {
+                            "title": "Connection & TLS Error Counts",
+                            "view": "singleValue",
+                            "metrics": [
+                                [ "AWS/ApplicationELB", "TargetConnectionErrorCount", "LoadBalancer", "${Loadbalancer}" ],
+                                [ ".", "TargetTLSNegotiationErrorCount", ".", "." ]
+                            ],
+                            "region": "${AWS::Region}"
+                        }
+                    }
+                ]
+              }
+            - Loadbalancer: !Join [ '/', [!Select [1, !Split ['/', !Ref LoadBalancerArn]], !Select [2, !Split ['/', !Ref LoadBalancerArn]], !Select [3, !Split ['/', !Ref LoadBalancerArn]]]]

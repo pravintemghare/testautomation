@@ -1,0 +1,10 @@
+{
+    "Parameters": {
+        "OutputBucketName": "cfn-deploy-test-git2s3",
+        "ExcludeGit": "True",
+        "ApiSecret": "git2s3secret",
+        "QSS3BucketName": "aws-quickstart",
+        "QSS3BucketRegion": "us-east-1",
+        "QSS3KeyPrefix": "quickstart-git2s3/"
+    }
+}

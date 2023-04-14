@@ -1,0 +1,83 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: Networkresources
+
+Parameters: 
+  ServiceName:
+    Type: "String"
+  VpcProductVersionName:
+    Type: "String"
+  Stage:
+    Type: "String"
+  HostedZoneId:
+    Type: "String"
+  PrivateNatGatewayAzA:
+    Type: "String"
+    Default: "Disabled"
+    AllowedValues: ["Disabled", "Enabled"]
+    Description: Enable NAT GW for Private Subnet in Zone A.
+  PrivateNatGatewayAzB:
+    Type: "String"
+    Default: "Disabled"
+    AllowedValues: ["Disabled", "Enabled"]
+    Description: Enable NAT GW for Private Subnet in Zone B.
+  PrivateNatGatewayAzC:
+    Type: "String"
+    Default: "Disabled"
+    AllowedValues: ["Disabled", "Enabled"]
+    Description: Enable NAT GW for Private Subnet in Zone C.
+
+Mappings:
+  Config:
+    Vpc:
+      PrefixLength: 26
+
+Resources:
+  ConnectedAndSharedVpc:
+    Type: "AWS::ServiceCatalog::CloudFormationProvisionedProduct"
+    Properties:
+      ProductName: "ConnectedAndSharedVpc - DevOps"
+      ProvisionedProductName: !Sub "${ServiceName}-ConnectedAndSharedVpc-${Stage}"
+      ProvisioningArtifactName: !Ref VpcProductVersionName
+      ProvisioningParameters:
+      - Key: "UniqueVpcName"
+        Value: !Sub "${ServiceName}Vpc${Stage}"
+      - Key: "PrivateIntranetPrefixLength"
+        Value: !FindInMap [ Config, Vpc, PrefixLength ]
+      - Key: "S3Endpoint"
+        Value: "Disabled"
+      - Key: "DynamoDbEndpoint"
+        Value: "Disabled"
+      - Key: "AllowADCommunication"
+        Value: "Disabled"
+      # NAT Gateway will only be deployed if the following parameters are set to "Enabled"
+      - Key: "PrivateNatGatewayAzA"
+        Value: !Ref PrivateNatGatewayAzA
+      - Key: "PrivateNatGatewayAzB"
+        Value: !Ref PrivateNatGatewayAzB
+      - Key: "PrivateNatGatewayAzC"
+        Value: !Ref PrivateNatGatewayAzC
+Outputs:
+  VpcName:
+    Value: !Sub "${ServiceName}Vpc${Stage}"
+  HostedZoneId:
+    Value: !Ref HostedZoneId
+  VpcId:
+    Value: !GetAtt ConnectedAndSharedVpc.Outputs.VpcId
+  PrivateSubnetIdA:
+    Value: !GetAtt ConnectedAndSharedVpc.Outputs.PrivateSubnetAId
+  PrivateSubnetIdB:
+    Value: !GetAtt ConnectedAndSharedVpc.Outputs.PrivateSubnetBId
+  PrivateSubnetIdC:
+    Value: !GetAtt ConnectedAndSharedVpc.Outputs.PrivateSubnetCId
+  IntranetSubnetIdA:
+    Value: !GetAtt ConnectedAndSharedVpc.Outputs.IntranetSubnetAId
+  IntranetSubnetIdB:
+    Value: !GetAtt ConnectedAndSharedVpc.Outputs.IntranetSubnetBId
+  IntranetSubnetIdC:
+    Value: !GetAtt ConnectedAndSharedVpc.Outputs.IntranetSubnetCId
+  PublicSubnetIdA:
+    Value: !GetAtt ConnectedAndSharedVpc.Outputs.PublicSubnetAId
+  PublicSubnetIdB:
+    Value: !GetAtt ConnectedAndSharedVpc.Outputs.PublicSubnetBId
+  PublicSubnetIdC:
+    Value: !GetAtt ConnectedAndSharedVpc.Outputs.PublicSubnetCId

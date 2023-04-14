@@ -1,0 +1,12 @@
+scripts/script_setup/projectVars_clean.json
+scripts/script_setup/projectVars_test*
+prototype_packaged_infrastructure.yaml
+README_AUTO.md
+.vscode
+temp*
+sandbox_config*
+proto.conf
+.aws-sam
+venv
+__pycache__*
+.DS_Store

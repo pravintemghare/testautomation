@@ -1,0 +1,382 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: This template deploys a role to deploy resources from CloudFormation using AWS CodePipeline in the same account.
+Metadata:
+  Pipeline:
+    EntrypointName: Launch in AWS account
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: Pipeline account
+        Parameters:
+          - ArtifactBucketArn
+          - ArtifactKey
+      - Label:
+          default: AWS account IAM
+        Parameters:
+          - CloudFormationDeploymentRoleName
+    ParameterLabels:
+      ArtifactBucketArn:
+        Default: Artifact Bucket Arn
+      ArtifactKey:
+        Default: Artifact Key Arn
+      CloudFormationDeploymentRoleName:
+        Default: CloudFormation Deployment Role Name
+Parameters:
+  ArtifactBucketArn:
+    Description: Artifact bucket Arn
+    Type: String
+  ArtifactKey:
+    Description: Artifact bucket KMS Arn (leave blank if first run of template)
+    Type: String
+  CloudFormationDeploymentRoleName:
+    Description: Cloudformation deployment role name
+    Default: CloudFormationDeploymentRole
+    Type: String
+  ServiceName:
+    Description: Name of the application
+    Type: String
+
+Resources:
+  CloudFormationDeploymentRole:
+    Type: AWS::IAM::Role
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W28
+            reason: Explicit name improved Usability and is therefore set by purpose.
+    Properties:
+      RoleName: !Sub '${CloudFormationDeploymentRoleName}'
+      AssumeRolePolicyDocument:
+        Statement:
+          - Action: sts:AssumeRole
+            Effect: Allow
+            Principal:
+              Service: cloudformation.amazonaws.com
+        Version: '2012-10-17'
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AWSBackupFullAccess
+  CloudFormationDeploymentRolePolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyDocument:
+        Statement:
+          - Action:
+              - iam:PassRole
+              - iam:GetRole
+              - iam:CreateRole
+              - iam:AttachRolePolicy
+            Effect: Allow
+            Resource: !Sub 'arn:aws:iam::${AWS::AccountId}:role/*'
+          - Action:
+              - s3:GetObject*
+              - s3:GetBucket*
+              - s3:List*
+            Effect: Allow
+            Resource:
+              - !Ref 'ArtifactBucketArn'
+              - !Sub '${ArtifactBucketArn}/*'
+          - Action:
+              - kms:DescribeKey
+              - kms:Decrypt
+            Effect: Allow
+            Resource:
+              - !Sub '${ArtifactBucketArn}/${ArtifactKey}'
+          - Action:
+              - cloudformation:CreateStack
+              - cloudformation:DescribeStack*
+              - cloudformation:GetStackPolicy
+              - cloudformation:GetTemplate*
+              - cloudformation:SetStackPolicy
+              - cloudformation:UpdateStack
+              - cloudformation:ValidateTemplate
+            Effect: Allow
+            Resource:
+              - !Sub 'arn:aws:cloudformation:${AWS::Region}::${AWS::AccountId}:stack/ProdApplicationDeploymentStack*'
+        Version: '2012-10-17'
+      PolicyName: 'CloudFormationDeploymentRoleBasePolicy'
+      Roles:
+        - !Ref 'CloudFormationDeploymentRole'
+
+  CloudFormationDeploymentSnsPolicy:
+    Type: AWS::IAM::Policy
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: F4
+            reason: The actions with * are needed
+          - id: W12
+            reason: Not relevant here.
+          - id: F39
+            reason: This is needed since resources cannot be limited currently.
+    Properties:
+      PolicyDocument:
+        Statement:
+          - Action:
+              - sns:*
+            Effect: Allow
+            Resource:
+              - '*'
+        Version: '2012-10-17'
+      PolicyName: 'CloudFormationDeploymentSnsPolicy'
+      Roles:
+        - !Ref 'CloudFormationDeploymentRole'
+  CloudFormationDeploymentRDSPolicy:
+    Type: AWS::IAM::Policy
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: F4
+            reason: The actions with * are needed and cannot be minimized
+          - id: W12
+            reason: Not relevant here.
+          - id: F39
+            reason: This is needed since resources cannot be limited currently.
+    Properties:
+      PolicyDocument:
+        Statement:
+          - Action:
+              - ec2:*
+            Effect: Allow
+            Resource:
+              - '*'
+          - Action:
+              - rds:*
+            Effect: Allow
+            Resource: '*'
+          - Action:
+              - cloudwatch:*
+            Effect: Allow
+            Resource:
+              - '*'
+          - Action:
+              - route53:Describe*
+              - route53:List*
+              - route53:Get*
+              - route53:ChangeResourceRecordSets
+            Effect: Allow
+            Resource: '*'
+          - Action:
+              - secretsmanager:CreateSecret
+              - secretsmanager:DeleteSecret
+              - secretsmanager:PutSecretValue
+              - secretsmanager:UpdateSecret
+              - secretsmanager:Describe*
+              - secretsmanager:List*
+              - secretsmanager:Get*
+              - secretsmanager:GetRandomPassword
+              - secretsmanager:TagResource
+              - secretsmanager:UntagResource
+              - secretsmanager:RotateSecret
+              - secretsmanager:CancelRotateSecret
+            Effect: Allow
+            Resource:
+              - '*'
+          - Action:
+              - iam:Delete*
+              - iam:PutRolePolicy
+              - iam:DetachRolePolicy
+              - iam:Get*
+              - iam:List*
+              - iam:Describe*
+              - iam:PassRole
+              - iam:CreateServiceLinkedRole
+              - iam:CreateRole
+              - iam:AttachRolePolicy
+              - iam:UpdateAssumeRolePolicy
+              - iam:UpdateRole
+              - iam:CreatePolicy*
+              - iam:CreateInstanceProfile
+              - iam:AddRoleToInstanceProfile
+              - iam:RemoveRoleFromInstanceProfile
+            Effect: Allow
+            Resource:
+              - '*'
+        Version: '2012-10-17'
+      PolicyName: 'CloudformationDeploymentRDSPolicy'
+      Roles:
+        - !Ref 'CloudFormationDeploymentRole'
+  CloudFormationDeploymentALBPolicy:
+    Type: AWS::IAM::Policy
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: F4
+            reason: The actions with * are needed
+          - id: W12
+            reason: Not relevant here.
+          - id: F39
+            reason: This is needed since resources cannot be limited currently.
+    Properties:
+      PolicyDocument:
+        Statement:
+          - Action:
+              - s3:*
+            Effect: Allow
+            Resource:
+              - '*'
+          - Action:
+              - ec2:*Security*
+            Effect: Allow
+            Resource:
+              - '*'
+          - Action:
+              - elasticloadbalancing:*
+            Effect: Allow
+            Resource:
+              - '*'
+          - Action:
+              - cloudwatch:*
+            Effect: Allow
+            Resource:
+              - '*'
+          - Action:
+              - sns:*
+            Effect: Allow
+            Resource:
+              - '*'
+          - Action:
+              - secretsmanager:*
+            Effect: Allow
+            Resource:
+              - '*'
+          - Action:
+              - events:*
+            Effect: Allow
+            Resource:
+              - '*'
+          - Action:
+              - iam:Delete*
+              - iam:PutRolePolicy
+              - iam:DetachRolePolicy
+              - iam:Get*
+              - iam:List*
+              - iam:Describe*
+              - iam:PassRole
+              - iam:Create*
+              - iam:AttachRolePolicy
+              - iam:UpdateAssumeRolePolicy
+              - iam:UpdateRole
+              - iam:AddRoleToInstanceProfile
+              - iam:RemoveRoleFromInstanceProfile
+            Effect: Allow
+            Resource:
+              - '*'
+          - Action:
+              - acm:*
+            Effect: Allow
+            Resource:
+              - '*'
+          - Action:
+              - route53:*
+              - wafv2:*
+            Effect: Allow
+            Resource:
+              - '*'
+          - Action:
+              - cloudtrail:*
+            Effect: Allow
+            Resource:
+              - '*'
+        Version: '2012-10-17'
+      PolicyName: 'CloudformationDeploymentALBPolicy'
+      Roles:
+        - !Ref 'CloudFormationDeploymentRole'
+  CloudFormationDeploymentEC2Policy:
+    Type: AWS::IAM::Policy
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: F4
+            reason: The actions with * are needed and cannot be minimized
+          - id: W12
+            reason: Not relevant here.
+          - id: F39
+            reason: This is needed since resources cannot be limited currently.
+    Properties:
+      PolicyDocument:
+        Statement:
+          - Action:
+              - s3:*
+            Effect: Allow
+            Resource:
+              - '*'
+          - Action:
+              - ec2:*
+            Effect: Allow
+            Resource:
+              - '*'
+          - Action:
+              - cloudwatch:*
+            Effect: Allow
+            Resource:
+              - '*'
+          - Action:
+              - sns:*
+            Effect: Allow
+            Resource:
+              - '*'
+          - Action:
+              - secretsmanager:*
+            Effect: Allow
+            Resource:
+              - '*'
+          - Action:
+              - events:*
+            Effect: Allow
+            Resource:
+              - '*'
+          - Action:
+              - iam:Delete*
+              - iam:PutRolePolicy
+              - iam:DetachRolePolicy
+              - iam:Get*
+              - iam:List*
+              - iam:Describe*
+              - iam:PassRole
+              - iam:CreateServiceLinkedRole
+              - iam:CreateRole
+              - iam:AttachRolePolicy
+              - iam:UpdateAssumeRolePolicy
+              - iam:UpdateRole
+              - iam:CreatePolicy*
+              - iam:CreateInstanceProfile
+              - iam:AddRoleToInstanceProfile
+              - iam:RemoveRoleFromInstanceProfile
+            Effect: Allow
+            Resource:
+              - '*'
+          - Action:
+              - backup-storage:MountCapsule
+              - backup:*
+            Effect: Allow
+            Resource: '*'
+          - Action:
+              - ssm:*
+            Effect: Allow
+            Resource:
+              - '*'
+          - Action:
+              - route53:Describe*
+              - route53:List*
+              - route53:Get*
+              - route53:ChangeResourceRecordSets
+            Effect: Allow
+            Resource: '*'
+          - Action:
+              - lambda:*
+            Effect: Allow
+            Resource:
+              - '*'
+          - Action:
+              - servicecatalog:*
+            Effect: Allow
+            Resource: '*'
+        Version: '2012-10-17'
+      PolicyName: 'CloudformationDeploymentEC2Policy'
+      Roles:
+        - !Ref 'CloudFormationDeploymentRole'
+Outputs:
+  CloudFormationDeploymentRoleArn:
+    Value: !GetAtt 'CloudFormationDeploymentRole.Arn'
+    Export:
+      Name: !Sub '${ServiceName}-CloudFormationDeploymentRoleArn'

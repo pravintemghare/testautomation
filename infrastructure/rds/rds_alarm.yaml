@@ -1,0 +1,100 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'RDS instance alarms'
+Parameters:
+  Topic: # ARN
+    Type: String
+  DBId:
+    Type: String
+  CPUUtilizationThreshold:
+    Type: Number
+  FreeStorageSpaceThreshold:
+    Type: Number
+  MetricNameSpace:
+    Type: String
+    Default: AWS/RDS
+    
+Conditions:
+  HasCPUUtilizationThreshold: !Not [!Equals [!Ref CPUUtilizationThreshold, '-1']]
+  HasFreeStorageSpaceThreshold: !Not [!Equals [!Ref FreeStorageSpaceThreshold, '-1']]
+
+Resources:
+  ##########################################################################
+  #                                 Utilization                            #
+  ##########################################################################
+
+  CPUUtilizationTooHighAlarm:
+    Condition: HasCPUUtilizationThreshold
+    Type: 'AWS::CloudWatch::Alarm'
+    Properties:
+      AlarmActions:
+      - !Ref Topic
+      AlarmName: !Sub CpuUtilizationAlarm-${DBId}
+      AlarmDescription: 'Average CPU utilization over last 10 minutes too high.'
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+      - Name: DBInstanceIdentifier
+        Value: !Ref DBId
+      EvaluationPeriods: 1
+      MetricName: CPUUtilization
+      Namespace: !Ref MetricNameSpace
+      OKActions:
+      - !Ref Topic
+      Period: 600
+      Statistic: Average
+      Threshold: !Ref CPUUtilizationThreshold
+      TreatMissingData: notBreaching
+
+  FreeStorageSpaceAlarm:
+    Type: 'AWS::CloudWatch::Alarm'
+    Condition: HasFreeStorageSpaceThreshold
+    Properties:
+      AlarmActions:
+      - !Ref Topic
+      AlarmName: !Sub FreeStorageSpace-${DBId}
+      AlarmDescription: 'Free Storage Space reached.'
+      ComparisonOperator: LessThanThreshold
+      Metrics:
+      - Id: m1
+        Label: FreeStorageSpace
+        MetricStat:
+          Metric:
+            Dimensions:
+            - Name: DBInstanceIdentifier
+              Value: !Ref DBId
+            MetricName: "FreeStorageSpace"
+            Namespace: !Ref MetricNameSpace
+          Period: 600
+          Stat: Average
+          Unit: Bytes
+        ReturnData: false
+      - Expression: 'm1/(1024^3)' # from Byte to GB
+        Id: e1
+        Label: 'convert FreeStorageSpace from Byte to GB'
+        ReturnData: true
+      EvaluationPeriods: 1
+      OKActions:
+      - !Ref Topic
+      Threshold: !Ref FreeStorageSpaceThreshold
+      TreatMissingData: notBreaching
+
+  ##########################################################################
+  #                                 OUTPUTS                                #
+  ##########################################################################
+Outputs:
+  CPUUtilizationTooHighAlarm:
+    Description: 'Arn of Alert.'
+    Condition: HasCPUUtilizationThreshold
+    Value: !GetAtt CPUUtilizationTooHighAlarm.Arn
+  FreeStorageSpaceAlarm:
+    Description: 'Arn of Alert.'
+    Condition: HasFreeStorageSpaceThreshold
+    Value: !GetAtt FreeStorageSpaceAlarm.Arn
+  AlarmsArray:
+    Value: !Join [",",
+      [
+      !If [HasCPUUtilizationThreshold, !Sub '"${CPUUtilizationTooHighAlarm.Arn}"', ""],
+      !If [HasFreeStorageSpaceThreshold, !Sub '"${FreeStorageSpaceAlarm.Arn}"', ""]
+      ]
+    ]
+    Export:
+      Name: !Sub ${DBId}-AlarmsArray

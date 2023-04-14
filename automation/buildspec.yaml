@@ -1,0 +1,29 @@
+version: 0.2
+phases:
+  install:
+    runtime-versions:
+      python: 3.8
+      ruby: 2.6
+    commands:
+    - pip install aws-sam-cli boto3 cfn-flip cfn-lint --quiet
+    - gem install cfn-nag -N
+  pre_build:
+    commands:
+    - echo "Build started on $(date)"
+    - echo "Source Version ${CODEBUILD_RESOLVED_SOURCE_VERSION}"
+    - bash scripts/linter/run-linters.sh
+    
+  build:
+    commands:
+    - echo "build"
+    - sam build -t infrastructure/infrastructure.yaml 
+    - sam package -t .aws-sam/build/template.yaml --s3-bucket $BUCKET_NAME --output-template-file packaged_infrastructure.yaml
+
+  post_build:
+    commands:
+    - echo "post-build"
+
+artifacts:
+  files:
+  - packaged_infrastructure.yaml
+  - infrastructure/config/*

@@ -1,0 +1,185 @@
+
+AWSTemplateFormatVersion: 2010-09-09
+Description: Application Load Balancer and related resources
+Parameters:
+  ServiceName:
+    Type: "String"
+  LoadBalancerDomain:
+    Type: "String"
+  # HostedZoneName:
+  #   Type: "String"
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: "ID of the VPC containing the service resources."
+  TargetInstanceId:
+    Type: AWS::EC2::Instance::Id
+  SubnetAId:
+    Type: AWS::EC2::Subnet::Id
+  SubnetBId:
+    Type: AWS::EC2::Subnet::Id
+  AlbSecurityGroupId:
+    Type: String
+  AccessLogsBucketName:
+    Type: String
+    Description: Name of the S3 bucket to be used for the ALB access logs
+  ApplicationPort1:
+    Description: Port of the webapplication running on the EC2
+    Type: String
+  HealthCheckPort:
+    Description: Port of the healthcheck service for ALB target
+    Type: String
+  # WebACLArn:
+  #   Type: String
+  #   Description: "Pass the WebACL ARN Value"
+  #   Default: ""
+
+Resources:
+
+  # *.covestro.com certificates (validation required)
+  # SSLCertificate:
+  #   Type: "AWS::CertificateManager::Certificate"
+  #   Properties:
+  #     DomainName: !Sub "${LoadBalancerDomain}"
+  #     ValidationMethod: "CNAME"
+
+## ad.glpoly.net
+  # SSLCertificate:
+  #   Type: AWS::ServiceCatalog::CloudFormationProvisionedProduct
+  #   Properties:
+  #     ProductName: "SSL Certificate aws.glpoly.net"
+  #     ProvisionedProductName: "SSLCertificate-ALBDomain"
+  #     ProvisioningArtifactName: "v0.0.28"
+  #     ProvisioningParameters:
+  #       - Key: Domain
+  #         Value: !Sub "${LoadBalancerDomain}"
+
+## covestro.net
+  SSLCertificate:
+    Type: AWS::ServiceCatalog::CloudFormationProvisionedProduct
+    Properties:
+      ProductName: "SSL Certificate covestro.net"
+      ProvisionedProductName: "SSLCertificate-ALBDomain"
+      ProvisioningArtifactName: "v0.0.5"
+      ProvisioningParameters:
+        - Key: Domain
+          Value: !Sub "${LoadBalancerDomain}"
+
+
+  # Load balancer resources
+  ApplicationLoadBalancer:
+    Type: "AWS::ElasticLoadBalancingV2::LoadBalancer"
+    Properties:
+      Scheme: "internal"
+      SecurityGroups:
+        - !Ref AlbSecurityGroupId
+      Subnets:
+        - !Ref SubnetAId
+        - !Ref SubnetBId
+      Type: "application"
+      LoadBalancerAttributes:
+      - Key: access_logs.s3.enabled
+        Value: "true"
+      - Key: access_logs.s3.bucket
+        Value: !Ref AccessLogsBucketName
+      - Key: access_logs.s3.prefix
+        Value: !Ref ServiceName
+
+  Ec2TargetGroup1:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      HealthCheckEnabled: True
+      HealthCheckIntervalSeconds: 30
+      HealthCheckPath: "/healthcheck/" # Check according to your healthcheck path
+      HealthCheckPort: !Ref HealthCheckPort
+      HealthCheckProtocol: HTTPS
+      HealthyThresholdCount: 3
+      Port: !Ref ApplicationPort1
+      Protocol: HTTPS
+      Targets:
+        - Id: !Ref TargetInstanceId
+          Port: !Ref ApplicationPort1
+      TargetType: instance
+      UnhealthyThresholdCount: 3
+      VpcId: !Ref VpcId
+      Tags:
+        - Key: DomainPrefix
+          Value: !Ref LoadBalancerDomain
+
+  HttpListener:
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W56
+            reason: "This is irrelevant, the traffic is routed to HTTPS"
+    Type: "AWS::ElasticLoadBalancingV2::Listener"
+    Properties:
+      LoadBalancerArn: !Ref ApplicationLoadBalancer
+      Port: 80
+      Protocol: "HTTP"
+      DefaultActions:
+      - Type: "redirect"
+        RedirectConfig:
+          Protocol: "HTTPS"
+          Port: "443"
+          Host: "#{host}"
+          Path: "/#{path}"
+          Query: "#{query}"
+          StatusCode: "HTTP_301"
+
+  HttpsListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref ApplicationLoadBalancer
+      Port: 443
+      Protocol: HTTPS
+      SslPolicy: "ELBSecurityPolicy-TLS-1-2-2017-01"
+      Certificates:
+        - CertificateArn: !GetAtt SSLCertificate.Outputs.CertificateArn
+      DefaultActions:
+        - Type: fixed-response
+          FixedResponseConfig:
+            StatusCode: "404"
+            ContentType: "text/plain"
+            MessageBody: !Sub "You are using an unsupported domain for ${ServiceName}."
+
+  ALBListenerRule1:
+    Type: AWS::ElasticLoadBalancingV2::ListenerRule
+    Properties:
+      Actions:
+        - Type: forward
+          TargetGroupArn: !Ref Ec2TargetGroup1
+      Conditions:
+        - Field: host-header
+          HostHeaderConfig:
+            Values:
+              - !Ref LoadBalancerDomain
+      ListenerArn: !Ref HttpsListener
+      Priority: 3
+
+  # # DNS records
+  # LoadBalancerRecordSet1:
+  #   Type: "AWS::Route53::RecordSet"
+  #   Properties:
+  #     AliasTarget:
+  #       DNSName: !GetAtt ApplicationLoadBalancer.DNSName
+  #       HostedZoneId: !GetAtt ApplicationLoadBalancer.CanonicalHostedZoneID
+  #     HostedZoneName: !Sub "${HostedZoneName}."
+  #     Comment: !Sub "A record for ${ServiceName} load balancer"
+  #     Name: !Sub "${LoadBalancerDomain}"
+  #     Type: A
+
+  # AttachAlbWAF:
+  #   Type: 'AWS::WAFv2::WebACLAssociation'
+  #   Properties:
+  #     WebACLArn: !Ref WebACLArn
+  #     ResourceArn: !Ref ApplicationLoadBalancer  
+
+Outputs:
+  LoadBalancerArn:
+    Value: !Ref ApplicationLoadBalancer
+  LoadBalancerEndpoint:
+    Value: !GetAtt ApplicationLoadBalancer.DNSName
+  LoadBalancerHostedZoneId:
+    Value: !GetAtt ApplicationLoadBalancer.CanonicalHostedZoneID
+  Ec2TargetGroup1Arn:
+    Value: !Ref Ec2TargetGroup1

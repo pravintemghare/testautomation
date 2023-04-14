@@ -1,0 +1,9 @@
+{
+    "Parameters": {
+        "Git2S3BucketName": "",
+        "SourceObjectKey": "",
+        "ApplicationName": "",
+        "GitLabTargetAddressExportValue": "",
+        "CloudFormationDeploymentRoleName": ""
+    }
+}

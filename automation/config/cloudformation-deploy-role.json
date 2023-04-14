@@ -1,0 +1,8 @@
+{
+    "Parameters": {
+        "ArtifactBucketArn": "",
+        "ArtifactKey": "",
+        "ServiceName": "",
+        "CloudFormationDeploymentRoleName": ""
+    }
+}

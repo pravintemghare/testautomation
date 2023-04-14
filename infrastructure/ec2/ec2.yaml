@@ -1,0 +1,220 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: Ec2 infrastructure setup
+
+Parameters:
+  Stage:
+    Description: Stage of the application
+    Type: String
+  VpcId:
+    Description: Id of the VPC
+    Type: String
+  EC2RestoreAMI:
+    Description: (OPTIONAL) AMI identifier to restore the EC2 instance from
+    Type: String
+  ServiceName:
+    Description: The name of the application to roll out
+    Type: String
+  Subnet:
+    Type: String
+    Description: ID of the subnet to place the instance(s) in
+  EC2InstanceType:
+    Description: Instance Type size parameter
+    Type: String
+  EC2VolumeSize:
+    Description: Volume size of the EC2
+    Type: String
+  PatchTag:
+    Description: Tag used to identify ec2 for patching
+    Type: String
+  BackupTag:
+    Description: Tag used to identify ec2 for backups
+    Type: String
+  AlertTopic:
+    Description: SNS Topic for the Monitoring Alerts
+    Type: String
+
+Conditions:
+  IsProd: !Equals [!Ref Stage, prod]
+  IsEC2Restoration: !Not [!Equals [!Ref EC2RestoreAMI, '']]
+
+
+Mappings:
+  Config:
+    us-east-1:
+      ImageId: ami-0d713efe67cf47218
+    eu-central-1:
+      ImageId: ami-0ae4608ff5ec2c5f1
+    ap-southeast-1:
+      ImageId: ami-0ac04b195b315ae42
+
+Resources:
+
+################### Main Application Instance ###################
+  EC2SecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+        - id: F1000
+          reason: Outbound traffic limitations will need to be added by the project
+            team. Whitelisted to have the template running
+        - id: W28
+          reason: Explicit name improved Usability and is therefore set by purpose.
+    Properties:
+      GroupName: !Sub ${AWS::StackName}-${AWS::AccountId}-${AWS::Region}-securityGroup
+      GroupDescription: Default security group for ec2 instance
+      VpcId: !Ref VpcId
+      ####### Remove RDP access before Go-Live
+      SecurityGroupIngress:
+      - Description: RDP access
+        FromPort: 3389
+        ToPort: 3389
+        IpProtocol: tcp
+        SourcePrefixListId: !ImportValue cov-network-intranet-prefix-list
+    ####### Outbound connections are open.
+      Tags:
+      - Key: Name
+        Value: !Sub "${AWS::StackName}-${ServiceName}-${Stage}-ec2-sg"
+      - Key: !Ref ServiceName
+        Value: ec2
+
+  EC2Role:
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+        - id: W11
+          reason: The * resource on pass role is allowed since naming pattern cannot
+            be determined at this stage.
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service:
+            - ec2.amazonaws.com
+          Action:
+          - sts:AssumeRole
+      Path: /
+      Policies:
+      - PolicyName: TagRootVolumePolicy
+        PolicyDocument:
+          Version: 2012-10-17
+          Statement:
+          - Effect: Allow
+            Action: ec2:Describe*
+            Resource: '*'
+          - Effect: Allow
+            Action: ec2:CreateTags
+            Resource:
+            - !Sub 'arn:aws:ec2:${AWS::Region}:${AWS::AccountId}:volume/*'
+            - !Sub 'arn:aws:ec2:${AWS::Region}:${AWS::AccountId}:instance/*'
+      ManagedPolicyArns:
+      - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+      - arn:aws:iam::aws:policy/service-role/AmazonEC2RoleforSSM
+      - arn:aws:iam::aws:policy/CloudWatchActionsEC2Access
+
+  EC2InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      InstanceProfileName: !Sub EC2InstanceProfile-${AWS::StackName}
+      Path: /
+      Roles:
+      - !Ref EC2Role
+
+  EC2Instance:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId:
+        Fn::If:
+        - IsEC2Restoration
+        - !Ref EC2RestoreAMI
+        - Fn::FindInMap:
+          - Config
+          - !Ref AWS::Region
+          - ImageId
+      InstanceType: !Ref EC2InstanceType
+      BlockDeviceMappings:
+      - DeviceName: /dev/sda1
+        Ebs:
+          VolumeSize: !Ref EC2VolumeSize
+          VolumeType: gp3
+          Encrypted: true
+          DeleteOnTermination: true
+      IamInstanceProfile: !Ref EC2InstanceProfile
+      Monitoring: !If [IsProd, true, false]
+      NetworkInterfaces:
+      - AssociatePublicIpAddress: false
+        DeviceIndex: '0'
+        SubnetId: !Ref Subnet
+        GroupSet:
+        - !GetAtt "EC2SecurityGroup.GroupId"
+      Tags:
+      - Key: Name
+        Value: !Sub "${AWS::StackName}-${ServiceName}-ec2"
+      - Key: PatchGroup
+        Value: !Ref PatchTag
+      - Key: BackupSelector
+        Value: !Ref BackupTag
+      - Key: app
+        Value: !Ref ServiceName
+      # UserData:
+      #   Fn::Base64: !Sub |
+      #       <powershell>
+      #       tzutil /s "W. Europe Standard Time"
+      #       </powershell>
+
+  EC2RecordSet:
+    Type: AWS::Route53::RecordSet
+    Properties:
+      HostedZoneId: '{{resolve:ssm:HostedZoneId}}'
+      Name: !Sub "ec2-${ServiceName}-${Stage}.${AWS::AccountId}.aws.glpoly.net"
+      ResourceRecords:
+      - !GetAtt EC2Instance.PrivateIp
+      TTL: 900
+      Type: A
+
+  ##########################################################################
+  #                                 ALARMS                                 #
+  ##########################################################################
+  InstanceAlarmStack:
+    Type: AWS::CloudFormation::Stack
+    Condition: IsProd
+    Properties:
+      Parameters:
+        Topic: !Ref AlertTopic
+        InstanceId: !Ref EC2Instance
+        InstanceType: !Ref EC2InstanceType
+        ImageId:
+          Fn::If:
+          - IsEC2Restoration
+          - !Ref EC2RestoreAMI
+          - Fn::FindInMap:
+            - Config
+            - !Ref AWS::Region
+            - ImageId
+        Stage: !Ref Stage
+        ServiceName: !Ref ServiceName
+      TemplateURL: ec2_mon_alarms.yaml
+
+
+################### Common Resources ###################
+
+
+Outputs:
+  EC2SecurityGroup:
+    Description: Security group for EC2 instance
+    Value: !GetAtt EC2SecurityGroup.GroupId
+    Export:
+      Name: !Sub "${AWS::StackName}-EC2SecurityGroup"
+
+  EC2Id:
+    Description: EC2 instance ID
+    Value: !Ref EC2Instance
+    Export:
+      Name: !Sub "${AWS::StackName}-EC2Id"
+
+  EC2Role:
+    Description: EC2 Role
+    Value: !Ref EC2Role
