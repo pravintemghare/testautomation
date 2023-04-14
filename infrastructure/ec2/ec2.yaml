@@ -40,6 +40,10 @@ Resources:
             team. Whitelisted to have the template running
         - id: W28
           reason: Explicit name improved Usability and is therefore set by purpose.
+        - id: W9
+          reason: (W9) Security Groups found with ingress cidr that is not /32
+        - id: W2
+          reason: (W2) Security Groups found with cidr open to world on ingress.  This should never be true on instance.  Permissible on ELB
     Properties:
       GroupName: !Sub ${AWS::StackName}-${AWS::AccountId}-${AWS::Region}-securityGroup
       GroupDescription: Default security group for ec2 instance
