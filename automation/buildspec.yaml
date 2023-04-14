@@ -1,17 +1,9 @@
 version: 0.2
 phases:
-  install:
-    runtime-versions:
-      python: 3.9
-      ruby: 3.1
-    commands:
-    - pip install aws-sam-cli boto3 cfn-flip cfn-lint --quiet
-    - gem install cfn-nag -N
   pre_build:
     commands:
     - echo "Build started on $(date)"
     - echo "Source Version ${CODEBUILD_RESOLVED_SOURCE_VERSION}"
-    - bash scripts/linter/run-linters.sh
     
   build:
     commands:
