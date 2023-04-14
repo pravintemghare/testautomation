@@ -138,8 +138,8 @@ Resources:
         Fn::Base64: |
             #!/bin/bash
             yum -y update
-            yum install httpd
-            systemctl start httpd
+            yum -y install nginx
+            systemctl start nginx
 
 
 Outputs:
