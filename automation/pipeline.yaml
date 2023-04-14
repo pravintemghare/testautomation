@@ -289,7 +289,7 @@ Resources:
   Pipeline:
     Type: AWS::CodePipeline::Pipeline
     Properties:
-      Name: !Sub '${ApplicationName}-Cross-Account-Pipeline'
+      Name: !Sub '${ApplicationName}-Infra-Deployment-Pipeline'
       RoleArn: !GetAtt 'PipelineRole.Arn'
       Stages:
         - Name: Source
@@ -342,7 +342,6 @@ Resources:
                 TemplatePath: CodeBuildOutput::packaged_infrastructure.yaml
               InputArtifacts:
                 - Name: CodeBuildOutput
-              #RoleArn: !Sub 'arn:aws:iam::${AWS::AccountId}:role/${CloudFormationDeploymentRoleName}'
               RunOrder: 1
       ArtifactStore:
         EncryptionKey:
