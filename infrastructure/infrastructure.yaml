@@ -1,227 +1,131 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Description: Application Stack
 Parameters:
-  Stage:
-    Type: String
   ServiceName:
     Type: String
-  AlarmsEmail:
+  # DBInstanceType:
+  #   Description: Instance Type size parameter
+  #   Type: String
+  #   Default: db.m6i.large
+  # DBSnapshotIdentifier:
+  #   Description: (OPTIONAL) Snapshot identifier to restore the RDS database from
+  #   Type: String
+  #   Default: ''
+  # EnableEnhancedMonitoring:
+  #   Description: Provide metrics in real time for the operating system (OS) that your DB instance runs on.
+  #   Type: String
+  #   AllowedValues:
+  #     - true
+  #     - false
+  #   Default: true
+  VPCId:
+    Description: VPC ID from Networking
     Type: String
-    Description: Email to send alerts to
-    Default: ''
-  VpcProductVersion:
+    Default: ''  
+  SubnetId1:
+    Description: Subnet1 having internet gateway access
     Type: String
-    Default: v1.0.25
-  PrivateNatGatewayAzA:
+    Default: ''  
+  SubnetId2:
+    Description: Subnet2 having internet gateway access
     Type: String
-    Default: Disabled
-    AllowedValues:
-      - Disabled
-      - Enabled
-    Description: Enable NAT GW for Private Subnet in Zone A.
-  PrivateNatGatewayAzB:
-    Type: String
-    Default: Disabled
-    AllowedValues:
-      - Disabled
-      - Enabled
-    Description: Enable NAT GW for Private Subnet in Zone B.
-  PrivateNatGatewayAzC:
-    Type: String
-    Default: Disabled
-    AllowedValues:
-      - Disabled
-      - Enabled
-    Description: Enable NAT GW for Private Subnet in Zone C.
-  DBInstanceType:
-    Description: Instance Type size parameter
-    Type: String
-    Default: db.m6i.large
-  DBSnapshotIdentifier:
-    Description: (OPTIONAL) Snapshot identifier to restore the RDS database from
-    Type: String
-    Default: ''
-  EnableEnhancedMonitoring:
-    Description: Provide metrics in real time for the operating system (OS) that your DB instance runs on.
-    Type: String
-    AllowedValues:
-      - true
-      - false
-    Default: true
-  HostedZoneName:
-    Description: Name of the HostedZone to which the ALB will be deployed.
-    Type: String
-    Default: ''
-  BackupRetentionPeriod:
-    Type: Number
-    Description: Days to retain snapshots of EC2
-    Default: 7
-  EC2RestoreAMI:
-    Description: (OPTIONAL) AMI identifier to restore the EC2 instance from
+    Default: ''  
+  EC2AMI:
+    Description: AMI for EC2 instance to deploy
     Type: String
     Default: ''
   EC2InstanceType:
     Description: Instance Type size parameter
     Type: String
-    Default: t3.medium
-  OSPatchingTimeWindow:
-    Description: Cron or rate expressing which defines, when to auto-patch windows instances
-    Type: String
-    Default: cron(05 00 ? * * *)
-  TimeZone:
-    Description: IANA Timezone for the project
-    Type: String
-    Default: CET
+    Default: t2.micro
   EC2VolumeSize:
     Description: Volume size of the EC2
     Type: String
     Default: '30'
 Resources:
-  SnsTopic:
-    Type: AWS::CloudFormation::Stack
-    Properties:
-      TemplateURL: sns_topic/sns_topic.yaml
-      Parameters:
-        AlarmsEmail: !Ref 'AlarmsEmail'
-        Stage: !Ref 'Stage'
-        ServiceName: !Ref 'ServiceName'
-  Network:
-    Type: AWS::CloudFormation::Stack
-    Properties:
-      TemplateURL: network/network.yaml
-      Parameters:
-        ServiceName: !Ref 'ServiceName'
-        VpcProductVersionName: !Ref 'VpcProductVersion'
-        Stage: !Ref 'Stage'
-        HostedZoneId: '{{resolve:ssm:HostedZoneId}}'
-        PrivateNatGatewayAzA: !Ref 'PrivateNatGatewayAzA'
-        PrivateNatGatewayAzB: !Ref 'PrivateNatGatewayAzB'
-        PrivateNatGatewayAzC: !Ref 'PrivateNatGatewayAzC'
-  RDS:
-    Type: AWS::CloudFormation::Stack
-    Properties:
-      TemplateURL: rds/rds.yaml
-      Parameters:
-        Stage: !Ref 'Stage'
-        VpcId: !GetAtt 'Network.Outputs.VpcId'
-        EnableEnhancedMonitoring: !Ref 'EnableEnhancedMonitoring'
-        BackupRetentionPeriod: !Ref 'BackupRetentionPeriod'
-        DBSnapshotIdentifier: !Ref 'DBSnapshotIdentifier'
-        HostedZoneId: '{{resolve:ssm:HostedZoneId}}'
-        ServiceName: !Ref 'ServiceName'
-        SubnetA: !GetAtt 'Network.Outputs.PrivateSubnetIdA'
-        SubnetB: !GetAtt 'Network.Outputs.PrivateSubnetIdB'
-        DBInstanceType: !Ref 'DBInstanceType'
-        AlertTopic: !GetAtt 'SnsTopic.Outputs.Topic'
+
+  # RDS:
+  #   Type: AWS::CloudFormation::Stack
+  #   Properties:
+  #     TemplateURL: rds/rds.yaml
+  #     Parameters:
+  #       Stage: !Ref 'Stage'
+  #       VPCId: !GetAtt 'Network.Outputs.VpcId'
+  #       EnableEnhancedMonitoring: !Ref 'EnableEnhancedMonitoring'
+  #       BackupRetentionPeriod: !Ref 'BackupRetentionPeriod'
+  #       DBSnapshotIdentifier: !Ref 'DBSnapshotIdentifier'
+  #       HostedZoneId: '{{resolve:ssm:HostedZoneId}}'
+  #       ServiceName: !Ref 'ServiceName'
+  #       SubnetA: !GetAtt 'Network.Outputs.PrivateSubnetIdA'
+  #       SubnetB: !GetAtt 'Network.Outputs.PrivateSubnetIdB'
+  #       DBInstanceType: !Ref 'DBInstanceType'
+  #       AlertTopic: !GetAtt 'SnsTopic.Outputs.Topic'
   ALB:
     Type: AWS::CloudFormation::Stack
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+        - id: W3002
+          reason: "W3002: This code may only work with `package` cli command as the property"
     Properties:
       TemplateURL: alb/alb.yaml
       Parameters:
-        ServiceName: !Ref 'ServiceName'
-        LoadBalancerDomain: !Sub 'example.${HostedZoneName}'
-        ApplicationPort1: '443'
-        HealthCheckPort: '8443'
-        VpcId: !GetAtt 'Network.Outputs.VpcId'
-        TargetInstanceId: !GetAtt 'EC2.Outputs.EC2Id'
-        SubnetAId: !GetAtt 'Network.Outputs.IntranetSubnetIdA'
-        SubnetBId: !GetAtt 'Network.Outputs.IntranetSubnetIdB'
-        AccessLogsBucketName: !GetAtt 'ALBLog.Outputs.BucketName'
+        ApplicationPort: '80'
+        HealthCheckPort: '80'
+        VPCId: !Ref 'VPCId'
+        TargetInstanceId1: !GetAtt 'EC2Instance1.Outputs.EC2Id'
+        TargetInstanceId2: !GetAtt 'EC2Instance2.Outputs.EC2Id'
+        SubnetId1: !Ref SubnetId1
+        SubnetId2: !Ref SubnetId2
         AlbSecurityGroupId: !GetAtt 'ALBSecurityGroup.Outputs.SecurityGroupId'
-  ALBMonitoring:
-    Type: AWS::CloudFormation::Stack
-    Properties:
-      TemplateURL: alb/alb_mon.yaml
-      Parameters:
-        ServiceName: !Ref 'ServiceName'
-        Stage: !Ref 'Stage'
-        LoadBalancerArn: !GetAtt 'ALB.Outputs.LoadBalancerArn'
-        TargetGroupArn1: !GetAtt 'ALB.Outputs.Ec2TargetGroup1Arn'
-        TargetGroupLabel1: !Sub 'example.${HostedZoneName}'
-        MinimalHealthyHostCount: 1
-        UnhealthyHostNotificationEmail: !Ref 'AlarmsEmail'
-  ALBLog:
-    Type: AWS::CloudFormation::Stack
-    Properties:
-      TemplateURL: alb/alb_log.yaml
-      Parameters:
-        ServiceName: !Ref 'ServiceName'
+
   ALBSecurityGroup:
     Type: AWS::CloudFormation::Stack
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+        - id: W3002
+          reason: "W3002: This code may only work with `package` cli command as the property"
     Properties:
       TemplateURL: alb/alb_secgrp.yaml
       Parameters:
         ServiceName: !Ref 'ServiceName'
-        Stage: !Ref 'Stage'
-        ConnectedVpcId: !GetAtt 'Network.Outputs.VpcId'
-  EC2:
+        VPCId: !Ref VPCId
+
+  EC2Instance1:
     Type: AWS::CloudFormation::Stack
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+        - id: W3002
+          reason: "W3002: This code may only work with `package` cli command as the property"    
     Properties:
       TemplateURL: ec2/ec2.yaml
       Parameters:
-        Stage: !Ref 'Stage'
-        VpcId: !GetAtt 'Network.Outputs.VpcId'
-        EC2RestoreAMI: !Ref 'EC2RestoreAMI'
+        VPCId: !Ref VPCId
+        EC2AMI: !Ref 'EC2AMI'
         ServiceName: !Ref 'ServiceName'
-        Subnet: !GetAtt 'Network.Outputs.PrivateSubnetIdA'
+        SubnetId1: !Ref SubnetId1
         EC2InstanceType: !Ref 'EC2InstanceType'
         EC2VolumeSize: !Ref 'EC2VolumeSize'
-        PatchTag: !FindInMap
-          - Config
-          - Ec2
-          - PatchTag
-        BackupTag: !FindInMap
-          - Config
-          - Ec2
-          - BackupTag
-        AlertTopic: !GetAtt 'SnsTopic.Outputs.Topic'
-  EC2Backup:
+        ServerName: WebServer1
+        ALBSecurityGroup: !GetAtt ALBSecurityGroup.Outputs.SecurityGroupId
+
+  EC2Instance2:
     Type: AWS::CloudFormation::Stack
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+        - id: W3002
+          reason: "W3002: This code may only work with `package` cli command as the property"    
     Properties:
-      TemplateURL: ec2/ec2_backup.yaml
+      TemplateURL: ec2/ec2.yaml
       Parameters:
-        BackupRetentionPeriod: !Ref 'BackupRetentionPeriod'
+        VPCId: !Ref VPCId
+        EC2AMI: !Ref 'EC2AMI'
         ServiceName: !Ref 'ServiceName'
-        Stage: !Ref 'Stage'
-        BackupTag: !FindInMap
-          - Config
-          - Ec2
-          - BackupTag
-  EC2BackupVSS:
-    Type: AWS::CloudFormation::Stack
-    Properties:
-      TemplateURL: ec2/ec2_backup_vss.yaml
-      Parameters:
-        ServiceName: !Ref 'ServiceName'
-        Stage: !Ref 'Stage'
-        EC2Ids: !GetAtt 'EC2.Outputs.EC2Id'
-        EC2Roles: !GetAtt 'EC2.Outputs.EC2Role'
-  EC2Patching:
-    Type: AWS::CloudFormation::Stack
-    Properties:
-      TemplateURL: ec2/ec2_patching.yaml
-      Parameters:
-        Stage: !Ref 'Stage'
-        ServiceName: !Ref 'ServiceName'
-        OSPatchingTimeWindow: !Ref 'OSPatchingTimeWindow'
-        OSPatchingTimeZone: !Ref 'TimeZone'
-        PatchTag: !FindInMap
-          - Config
-          - Ec2
-          - PatchTag
-  PasswordRotationLambda:
-    Type: AWS::CloudFormation::Stack
-    Properties:
-      TemplateURL: ec2/ec2_password-rotation.yaml
-      Parameters:
-        ServiceName: !Ref 'ServiceName'
-        Stage: !Ref 'Stage'
-Conditions:
-  IsProd: !Equals
-    - !Ref 'Stage'
-    - prod
-Mappings:
-  Config:
-    Ec2:
-      PatchTag: WindowsServer
-      BackupTag: ec2defaultbackup
+        SubnetId1: !Ref SubnetId2
+        EC2InstanceType: !Ref 'EC2InstanceType'
+        EC2VolumeSize: !Ref 'EC2VolumeSize'
+        ServerName: WebServer2
+        ALBSecurityGroup: !GetAtt ALBSecurityGroup.Outputs.SecurityGroupId

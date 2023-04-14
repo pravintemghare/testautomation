@@ -1,9 +1,8 @@
 {
     "Parameters": {
-        "Git2S3BucketName": "",
-        "SourceObjectKey": "",
-        "ApplicationName": "",
-        "GitLabTargetAddressExportValue": "",
-        "CloudFormationDeploymentRoleName": ""
+        "Git2S3BucketName": "cfn-deploy-test-git2s3",
+        "SourceObjectKey": "pravintemghare/testautomation/master/pravintemghare_testautomation.zip",
+        "ApplicationName": "testautomation",
+        "CloudFormationDeploymentRoleName": "cfn-deploy-role"
     }
 }

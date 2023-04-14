@@ -5,11 +5,8 @@ Description: Application Load Balancer log bucket
 Parameters: 
   ServiceName:
     Type: "String"
-  Stage:
+  VPCId:
     Type: "String"
-  ConnectedVpcId:
-    Type: AWS::EC2::VPC::Id
-    Description: "ID of the VPC containing the service resources."
 
 Resources:
   AlbSecurityGroup:
@@ -24,25 +21,18 @@ Resources:
             reason: "This is the purpose"
           - id: W2
             reason: "This is the purpose"
+          - id: F1000
+            reason: "(F1000) Missing egress rule means all traffic is allowed outbound.  Make this explicit if it is desired configuration"
     Type: "AWS::EC2::SecurityGroup"
     Properties:
-      GroupDescription: !Sub "${ServiceName}-${Stage}-alb-sec-group"
-      VpcId: !Ref ConnectedVpcId
+      GroupDescription: !Sub "${ServiceName}-alb-sec-group"
+      VpcId: !Ref VPCId
       SecurityGroupIngress:
       - Description: "HTTP Ingress from public Internet for https forwarding"
         FromPort: 80
         ToPort: 80
         IpProtocol: "tcp"
         CidrIp: "0.0.0.0/0"
-      - Description: "HTTPS Ingress from public Internet"
-        FromPort: 443
-        ToPort: 443
-        IpProtocol: "tcp"
-        CidrIp: "0.0.0.0/0"
-      SecurityGroupEgress:
-      - CidrIp: "0.0.0.0/0"
-        Description: "Egress to public for AWS APIs"
-        IpProtocol: "-1"
 
 Outputs:
   SecurityGroupId:

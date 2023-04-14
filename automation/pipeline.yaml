@@ -88,6 +88,7 @@ Resources:
           - id: W35
             reason: Cloudtrail is setup and bucket is only required for the pipeline
     Properties:
+      BucketName: "artifact-bucket-cfn-automation"
       BucketEncryption:
         ServerSideEncryptionConfiguration:
           - ServerSideEncryptionByDefault:
