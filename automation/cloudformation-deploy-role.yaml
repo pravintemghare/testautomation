@@ -375,6 +375,43 @@ Resources:
       PolicyName: 'CloudformationDeploymentEC2Policy'
       Roles:
         - !Ref 'CloudFormationDeploymentRole'
+  CloudFormationDeployPolicy:
+    Type: AWS::IAM::Policy
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: F4
+            reason: The actions with * are needed and cannot be minimized
+          - id: W12
+            reason: Not relevant here.
+    Properties:
+      PolicyDocument:
+        Statement:
+          - Action:
+              - cloudformation:*
+            Effect: Allow
+            Resource: '*'
+          - Action:
+              - s3:Get*
+              - s3:Put*
+              - s3:ListBucket
+            Effect: Allow
+            Resource:
+              - !Ref 'ArtifactBucketArn'
+              - !Sub '${ArtifactBucketArn}/*'
+          - Action:
+              - kms:DescribeKey
+              - kms:GenerateDataKey*
+              - kms:Encrypt
+              - kms:ReEncrypt*
+              - kms:Decrypt
+            Effect: Allow
+            Resource:
+              - !Ref 'ArtifactKey'
+        Version: '2012-10-17'
+      PolicyName: 'CloudFormationDeployPolicy'
+      Roles:
+        - !Ref 'CloudFormationDeploymentRole'
 Outputs:
   CloudFormationDeploymentRoleArn:
     Value: !GetAtt 'CloudFormationDeploymentRole.Arn'

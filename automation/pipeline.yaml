@@ -212,9 +212,39 @@ Resources:
         rules_to_suppress:
           - id: W76
             reason: Cannot be shortened.
+          - id: F4
+            reason: (F4) IAM policy should not allow * action
+          - id: W12
+            reason: (W12) IAM policy should not allow * resource
+          - id: F39
+            reason: (F39) IAM policy should not allow * resource with PassRole action
     Properties:
       PolicyDocument:
         Statement:
+          - Action:
+              - iam:Delete*
+              - iam:PutRolePolicy
+              - iam:DetachRolePolicy
+              - iam:Get*
+              - iam:List*
+              - iam:Describe*
+              - iam:PassRole
+              - iam:CreateServiceLinkedRole
+              - iam:CreateRole
+              - iam:AttachRolePolicy
+              - iam:UpdateAssumeRolePolicy
+              - iam:UpdateRole
+              - iam:CreatePolicy*
+              - iam:CreateInstanceProfile
+              - iam:AddRoleToInstanceProfile
+              - iam:RemoveRoleFromInstanceProfile
+            Effect: Allow
+            Resource:
+              - '*'        
+          - Action:
+              - cloudformation:*
+            Effect: Allow
+            Resource: '*'        
           - Action:
               - s3:GetObject*
               - s3:GetBucket*
@@ -312,6 +342,7 @@ Resources:
                 TemplatePath: CodeBuildOutput::packaged_infrastructure.yaml
               InputArtifacts:
                 - Name: CodeBuildOutput
+              #RoleArn: !Sub 'arn:aws:iam::${AWS::AccountId}:role/${CloudFormationDeploymentRoleName}'
               RunOrder: 1
       ArtifactStore:
         EncryptionKey:
